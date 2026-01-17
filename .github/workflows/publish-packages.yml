@@ -1,0 +1,119 @@
+name: Build and Publish Packages
+
+on:
+  push:
+    branches:
+      - next
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@kairos-computer'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Update package names for GitHub Packages
+        run: |
+          REGISTRY="https://npm.pkg.github.com"
+          SCOPE="@kairos-computer"
+
+          update_package() {
+            local dir=$1
+            local new_name=$2
+            cd "$dir"
+
+            # Update name and registry
+            jq --arg name "$new_name" --arg registry "$REGISTRY" \
+              '.name = $name | .publishConfig.registry = $registry' \
+              package.json > tmp.json && mv tmp.json package.json
+
+            # Update @composio/* dependencies to use our scope (except @composio/client which is external)
+            jq --arg scope "$SCOPE" '
+              (.dependencies // {}) |= with_entries(
+                if .key | startswith("@composio/") and .key != "@composio/client" then
+                  .key = ($scope + "/composio-" + (.key | sub("@composio/"; ""))) |
+                  .value = "*"
+                else . end
+              ) |
+              (.peerDependencies // {}) |= with_entries(
+                if .key | startswith("@composio/") and .key != "@composio/client" then
+                  .key = ($scope + "/composio-" + (.key | sub("@composio/"; ""))) |
+                  .value = "*"
+                else . end
+              ) |
+              (.devDependencies // {}) |= with_entries(
+                if .key | startswith("@composio/") and .key != "@composio/client" then
+                  .key = ($scope + "/composio-" + (.key | sub("@composio/"; ""))) |
+                  .value = "*"
+                else . end
+              )
+            ' package.json > tmp.json && mv tmp.json package.json
+
+            cd - > /dev/null
+          }
+
+          # Core packages
+          update_package "ts/packages/core" "@kairos-computer/composio-core"
+          update_package "ts/packages/json-schema-to-zod" "@kairos-computer/composio-json-schema-to-zod"
+
+          # Provider packages
+          update_package "ts/packages/providers/anthropic" "@kairos-computer/composio-anthropic"
+          update_package "ts/packages/providers/claude-agent-sdk" "@kairos-computer/composio-claude-agent-sdk"
+          update_package "ts/packages/providers/cloudflare" "@kairos-computer/composio-cloudflare"
+          update_package "ts/packages/providers/google" "@kairos-computer/composio-google"
+          update_package "ts/packages/providers/langchain" "@kairos-computer/composio-langchain"
+          update_package "ts/packages/providers/llamaindex" "@kairos-computer/composio-llamaindex"
+          update_package "ts/packages/providers/mastra" "@kairos-computer/composio-mastra"
+          update_package "ts/packages/providers/openai" "@kairos-computer/composio-openai"
+          update_package "ts/packages/providers/openai-agents" "@kairos-computer/composio-openai-agents"
+          update_package "ts/packages/providers/vercel" "@kairos-computer/composio-vercel"
+
+      - name: Publish packages
+        run: |
+          publish_package() {
+            local dir=$1
+            cd "$dir"
+            pnpm publish --no-git-checks --access public || echo "Failed to publish $dir, continuing..."
+            cd - > /dev/null
+          }
+
+          # Publish in dependency order
+          publish_package "ts/packages/json-schema-to-zod"
+          publish_package "ts/packages/core"
+
+          # Providers (all depend on core)
+          publish_package "ts/packages/providers/anthropic"
+          publish_package "ts/packages/providers/claude-agent-sdk"
+          publish_package "ts/packages/providers/cloudflare"
+          publish_package "ts/packages/providers/google"
+          publish_package "ts/packages/providers/langchain"
+          publish_package "ts/packages/providers/llamaindex"
+          publish_package "ts/packages/providers/mastra"
+          publish_package "ts/packages/providers/openai"
+          publish_package "ts/packages/providers/openai-agents"
+          publish_package "ts/packages/providers/vercel"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
