@@ -30,8 +30,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build all packages
-        run: pnpm build
+      - name: Build TypeScript packages
+        run: |
+          pnpm build --filter="@composio/json-schema-to-zod" \
+                     --filter="@composio/core" \
+                     --filter="@composio/anthropic" \
+                     --filter="@composio/claude-agent-sdk" \
+                     --filter="@composio/cloudflare" \
+                     --filter="@composio/google" \
+                     --filter="@composio/langchain" \
+                     --filter="@composio/llamaindex" \
+                     --filter="@composio/mastra" \
+                     --filter="@composio/openai" \
+                     --filter="@composio/openai-agents" \
+                     --filter="@composio/vercel"
 
       - name: Update package names for GitHub Packages
         run: |
