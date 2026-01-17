@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout
@@ -24,8 +23,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@kairos-computer'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install
@@ -45,9 +43,8 @@ jobs:
                      --filter="@composio/openai-agents" \
                      --filter="@composio/vercel"
 
-      - name: Update package names for GitHub Packages
+      - name: Update package names for npm
         run: |
-          REGISTRY="https://npm.pkg.github.com"
           SCOPE="@kairos-computer"
 
           update_package() {
@@ -55,10 +52,8 @@ jobs:
             local new_name=$2
             cd "$dir"
 
-            # Update name and registry
-            jq --arg name "$new_name" --arg registry "$REGISTRY" \
-              '.name = $name | .publishConfig.registry = $registry' \
-              package.json > tmp.json && mv tmp.json package.json
+            # Update name
+            jq --arg name "$new_name" '.name = $name' package.json > tmp.json && mv tmp.json package.json
 
             # Update @composio/* dependencies to use our scope (except @composio/client which is external)
             jq --arg scope "$SCOPE" '
@@ -106,7 +101,7 @@ jobs:
           publish_package() {
             local dir=$1
             cd "$dir"
-            pnpm publish --no-git-checks --access public || echo "Failed to publish $dir, continuing..."
+            pnpm publish --no-git-checks --access public || echo "Failed to publish $dir (may already exist), continuing..."
             cd - > /dev/null
           }
 
@@ -126,4 +121,4 @@ jobs:
           publish_package "ts/packages/providers/openai-agents"
           publish_package "ts/packages/providers/vercel"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
